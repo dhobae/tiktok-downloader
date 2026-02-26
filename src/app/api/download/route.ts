@@ -51,15 +51,9 @@ export async function POST(request: Request) {
         // ==========================================
         try {
             console.log('Attempting Strategy 1: @tobyg74/tiktok-api-dl (v3 & v1)');
-            const withTimeout = (promise: Promise<any>, ms: number) =>
-                Promise.race([
-                    promise,
-                    new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), ms))
-                ]);
-
             const [result3, result1] = await Promise.all([
-                withTimeout(TiktokDL.Downloader(url, { version: "v3" }), 8000).catch(() => null),
-                withTimeout(TiktokDL.Downloader(url, { version: "v1" }), 8000).catch(() => null)
+                TiktokDL.Downloader(url, { version: "v3" }).catch(() => null),
+                TiktokDL.Downloader(url, { version: "v1" }).catch(() => null)
             ]);
 
             const res3 = result3?.status === 'success' ? result3.result as any : null;
