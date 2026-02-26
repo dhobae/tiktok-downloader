@@ -51,9 +51,15 @@ export async function POST(request: Request) {
         // ==========================================
         try {
             console.log('Attempting Strategy 1: @tobyg74/tiktok-api-dl (v3 & v1)');
+            const withTimeout = (promise: Promise<any>, ms: number) =>
+                Promise.race([
+                    promise,
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), ms))
+                ]);
+
             const [result3, result1] = await Promise.all([
-                TiktokDL.Downloader(url, { version: "v3" }).catch(() => null),
-                TiktokDL.Downloader(url, { version: "v1" }).catch(() => null)
+                withTimeout(TiktokDL.Downloader(url, { version: "v3" }), 8000).catch(() => null),
+                withTimeout(TiktokDL.Downloader(url, { version: "v1" }), 8000).catch(() => null)
             ]);
 
             const res3 = result3?.status === 'success' ? result3.result as any : null;
@@ -126,106 +132,6 @@ export async function POST(request: Request) {
 
         } catch (e) {
             console.warn('Strategy 1 failed:', e);
-        }
-
-        // ==========================================
-        // STRATEGY 2: tiktok-scraper-without-watermark
-        // ==========================================
-        try {
-            console.log('Attempting Strategy 2: tiktok-scraper-without-watermark');
-            const result2 = await tiktokScraper.tiktokdownload(url);
-
-            if (result2 && result2.nowm) {
-                const responseData: DownloaderResponse = {
-                    type: 'video',
-                    title: 'TikTok Video',
-                    cover: fixUrl(result2.cover || ''),
-                    author: {
-                        nickname: result2.author_name || 'TikTok User',
-                        avatar: '',
-                    },
-                    video: {
-                        sd: fixUrl(result2.nowm),
-                        watermark: fixUrl(result2.wm || ''),
-                    },
-                    music: result2.music ? {
-                        title: 'Original Audio',
-                        playUrl: fixUrl(result2.music)
-                    } : undefined
-                };
-
-                if (!responseData.video?.sd && !responseData.video?.hd) {
-                    throw new Error('Strategy 2 returned success but missing media payload');
-                }
-
-                console.log('Strategy 2 succeeded ✅');
-                return NextResponse.json({ status: 'success', data: responseData });
-            }
-
-            throw new Error('Strategy 2: no valid result returned');
-
-        } catch (e) {
-            console.warn('Strategy 2 failed:', e);
-        }
-
-        // ==========================================
-        // STRATEGY 3: TikWM Public API Fallback
-        // ==========================================
-        try {
-            console.log('Attempting Strategy 3: TikWM Public API Fallback');
-            const fetchRes = await fetch('https://www.tikwm.com/api/', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                },
-                body: new URLSearchParams({ url, count: '12', cursor: '0', web: '1', hd: '1' })
-            });
-
-            const jsonRes = await fetchRes.json();
-            console.log('Strategy 3 response code:', jsonRes.code);
-
-            if (jsonRes.code === 0 && jsonRes.data) {
-                const data = jsonRes.data;
-                const isImage = data.images && data.images.length > 0;
-
-                const responseData: DownloaderResponse = {
-                    type: isImage ? 'image' : 'video',
-                    title: data.title || 'TikTok Media',
-                    cover: fixUrl(data.cover || ''),
-                    author: {
-                        nickname: data.author?.nickname || 'TikTok User',
-                        avatar: fixUrl(data.author?.avatar || ''),
-                    },
-                    music: data.music ? {
-                        title: 'TikTok Audio',
-                        playUrl: fixUrl(data.music)
-                    } : undefined
-                };
-
-                if (isImage) {
-                    responseData.images = data.images.map(fixUrl);
-                    responseData.cover = fixUrl(data.images[0]);
-                } else {
-                    responseData.video = {
-                        sd: fixUrl(data.play || ''),
-                        hd: fixUrl(data.hdplay || ''),
-                        watermark: fixUrl(data.wmplay || ''),
-                    };
-                }
-
-                if (!isImage && !responseData.video?.sd && !responseData.video?.hd) {
-                    throw new Error('Strategy 3 returned success but missing media payload');
-                }
-
-                console.log('Strategy 3 succeeded ✅');
-                return NextResponse.json({ status: 'success', data: responseData });
-            }
-
-            throw new Error(`Strategy 3: API returned code ${jsonRes.code}`);
-
-        } catch (e) {
-            console.warn('Strategy 3 failed:', e);
         }
 
         // Semua strategi gagal
