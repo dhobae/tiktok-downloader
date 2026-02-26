@@ -1,7 +1,21 @@
 import { NextResponse } from 'next/server';
 import TiktokDL from '@tobyg74/tiktok-api-dl';
-// Explicitly import from the library - standard import doesn't always work exactly as documented in these scraper libs
 const tiktokScraper = require('tiktok-scraper-without-watermark');
+
+// Helper: fix relative URLs
+const fixUrl = (u: string): string => {
+    if (!u) return '';
+    if (u.startsWith('http')) return u;
+    return `https://www.tiktok.com${u}`;
+};
+
+// Helper: fix array or string URL
+const resolveUrl = (val: any): string => {
+    if (!val) return '';
+    if (Array.isArray(val)) return fixUrl(val[0] || '');
+    if (typeof val === 'string') return fixUrl(val);
+    return '';
+};
 
 // Standardized Output Format
 export interface DownloaderResponse {
@@ -45,32 +59,29 @@ export async function POST(request: Request) {
             const res3 = result3?.status === 'success' ? result3.result as any : null;
             const res1 = result1?.status === 'success' ? result1.result as any : null;
 
+            console.log('Strategy 1 res3:', JSON.stringify(res3));
+            console.log('Strategy 1 res1:', JSON.stringify(res1));
+
             if (res3 || res1) {
-                const isImage = res3?.type === 'image' || res1?.type === 'image' || (res3?.images && res3.images.length > 0) || (res1?.images && res1.images.length > 0);
+                const isImage = res3?.type === 'image' || res1?.type === 'image'
+                    || (res3?.images && res3.images.length > 0)
+                    || (res1?.images && res1.images.length > 0);
 
-                const videoHD = res3?.videoHD || '';
-                let videoSD = res3?.videoSD || '';
+                const videoHD = resolveUrl(res3?.videoHD);
+                let videoSD = resolveUrl(res3?.videoSD);
 
-                // Fallback for SD if v3 didn't return SD properly
-                if (!videoSD && res1?.video?.playAddr && res1.video.playAddr.length > 0) {
-                    videoSD = res1.video.playAddr[0];
-                } else if (!videoSD && Array.isArray(res3?.video)) {
-                    videoSD = res3.video[0];
-                } else if (!videoSD && typeof res3?.video === 'string') {
-                    videoSD = res3.video;
-                }
+                if (!videoSD) videoSD = resolveUrl(res1?.video?.playAddr);
+                if (!videoSD) videoSD = resolveUrl(res3?.video);
 
-                let watermarkUrl = res3?.videoWatermark || '';
-                if (!watermarkUrl && res1?.video?.downloadAddr && res1.video.downloadAddr.length > 0) {
-                    watermarkUrl = res1.video.downloadAddr[0];
-                }
+                const watermarkUrl = resolveUrl(res3?.videoWatermark || res1?.video?.downloadAddr);
 
-                // Find cover image
-                let coverUrl = res3?.cover || res1?.video?.cover?.[0] || '';
-                if (!coverUrl && res3?.images?.length > 0) coverUrl = res3.images[0];
-                if (!coverUrl && res1?.images?.length > 0) coverUrl = res1.images[0];
+                let coverUrl = resolveUrl(res3?.cover || res1?.video?.cover);
+                if (!coverUrl && res3?.images?.length > 0) coverUrl = fixUrl(res3.images[0]);
+                if (!coverUrl && res1?.images?.length > 0) coverUrl = fixUrl(res1.images[0]);
 
                 const musicObj = res1?.music || res3?.music;
+
+                console.log('Strategy 1 resolved - videoHD:', videoHD, 'videoSD:', videoSD);
 
                 const responseData: DownloaderResponse = {
                     type: isImage ? 'image' : 'video',
@@ -78,20 +89,22 @@ export async function POST(request: Request) {
                     cover: coverUrl,
                     author: {
                         nickname: res3?.author?.nickname || res1?.author?.nickname || 'TikTok User',
-                        avatar: res3?.author?.avatar || res1?.author?.avatar || '',
+                        avatar: resolveUrl(res3?.author?.avatar || res1?.author?.avatar),
                     },
                 };
 
-                if (musicObj && (musicObj.playUrl || musicObj.url)) {
-                    const mPlayUrl = musicObj.playUrl || musicObj.url;
-                    responseData.music = {
-                        title: musicObj.title || 'Original Sound',
-                        playUrl: Array.isArray(mPlayUrl) ? mPlayUrl[0] : (typeof mPlayUrl === 'string' ? mPlayUrl : ''),
-                    };
+                if (musicObj) {
+                    const mPlayUrl = resolveUrl(musicObj.playUrl || musicObj.url);
+                    if (mPlayUrl) {
+                        responseData.music = {
+                            title: musicObj.title || 'Original Sound',
+                            playUrl: mPlayUrl,
+                        };
+                    }
                 }
 
                 if (isImage) {
-                    responseData.images = res3?.images || res1?.images || [];
+                    responseData.images = (res3?.images || res1?.images || []).map(fixUrl);
                 } else if (videoSD || videoHD) {
                     responseData.video = {
                         hd: videoHD,
@@ -100,13 +113,17 @@ export async function POST(request: Request) {
                     };
                 }
 
-                // If we didn't get any valid media, force fail to trigger fallback
                 if (!isImage && !responseData.video?.sd && !responseData.video?.hd) {
                     throw new Error('Strategy 1 returned success but missing playable media payload');
                 }
 
+                console.log('Strategy 1 succeeded ✅');
                 return NextResponse.json({ status: 'success', data: responseData });
             }
+
+            // res3 dan res1 keduanya null
+            throw new Error('Strategy 1: both v3 and v1 returned no result');
+
         } catch (e) {
             console.warn('Strategy 1 failed:', e);
         }
@@ -120,30 +137,33 @@ export async function POST(request: Request) {
 
             if (result2 && result2.nowm) {
                 const responseData: DownloaderResponse = {
-                    type: 'video', // Assume video as scraper primarily does video
+                    type: 'video',
                     title: 'TikTok Video',
-                    cover: result2.cover || '',
+                    cover: fixUrl(result2.cover || ''),
                     author: {
                         nickname: result2.author_name || 'TikTok User',
                         avatar: '',
                     },
                     video: {
-                        sd: result2.nowm,
-                        watermark: result2.wm,
+                        sd: fixUrl(result2.nowm),
+                        watermark: fixUrl(result2.wm || ''),
                     },
                     music: result2.music ? {
                         title: 'Original Audio',
-                        playUrl: result2.music
+                        playUrl: fixUrl(result2.music)
                     } : undefined
                 };
 
-                // If we didn't get any valid media, force fail to trigger fallback
                 if (!responseData.video?.sd && !responseData.video?.hd) {
                     throw new Error('Strategy 2 returned success but missing media payload');
                 }
 
+                console.log('Strategy 2 succeeded ✅');
                 return NextResponse.json({ status: 'success', data: responseData });
             }
+
+            throw new Error('Strategy 2: no valid result returned');
+
         } catch (e) {
             console.warn('Strategy 2 failed:', e);
         }
@@ -159,10 +179,11 @@ export async function POST(request: Request) {
                     'Content-Type': 'application/x-www-form-urlencoded',
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                 },
-                body: new URLSearchParams({ url: url, count: '12', cursor: '0', web: '1', hd: '1' })
+                body: new URLSearchParams({ url, count: '12', cursor: '0', web: '1', hd: '1' })
             });
 
             const jsonRes = await fetchRes.json();
+            console.log('Strategy 3 response code:', jsonRes.code);
 
             if (jsonRes.code === 0 && jsonRes.data) {
                 const data = jsonRes.data;
@@ -171,40 +192,43 @@ export async function POST(request: Request) {
                 const responseData: DownloaderResponse = {
                     type: isImage ? 'image' : 'video',
                     title: data.title || 'TikTok Media',
-                    cover: data.cover || '',
+                    cover: fixUrl(data.cover || ''),
                     author: {
                         nickname: data.author?.nickname || 'TikTok User',
-                        avatar: data.author?.avatar || '',
+                        avatar: fixUrl(data.author?.avatar || ''),
                     },
                     music: data.music ? {
                         title: 'TikTok Audio',
-                        playUrl: data.music
+                        playUrl: fixUrl(data.music)
                     } : undefined
                 };
 
                 if (isImage) {
-                    responseData.images = data.images;
-                    responseData.cover = data.images[0];
+                    responseData.images = data.images.map(fixUrl);
+                    responseData.cover = fixUrl(data.images[0]);
                 } else {
                     responseData.video = {
-                        sd: data.play,
-                        hd: data.hdplay,
-                        watermark: data.wmplay,
-                    }
+                        sd: fixUrl(data.play || ''),
+                        hd: fixUrl(data.hdplay || ''),
+                        watermark: fixUrl(data.wmplay || ''),
+                    };
                 }
 
-                // If we didn't get any valid media, force fail
                 if (!isImage && !responseData.video?.sd && !responseData.video?.hd) {
                     throw new Error('Strategy 3 returned success but missing media payload');
                 }
 
+                console.log('Strategy 3 succeeded ✅');
                 return NextResponse.json({ status: 'success', data: responseData });
             }
+
+            throw new Error(`Strategy 3: API returned code ${jsonRes.code}`);
+
         } catch (e) {
             console.warn('Strategy 3 failed:', e);
         }
 
-        // If all strategies fail
+        // Semua strategi gagal
         return NextResponse.json(
             { status: 'error', message: 'Gagal mengunduh video. Pastikan link video TikTok tersebut benar, video bersifat publik (tidak diprivat), dan belum dihapus.' },
             { status: 400 }
