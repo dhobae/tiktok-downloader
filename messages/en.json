@@ -1,0 +1,18 @@
+{
+    "Downloader": {
+        "title": "TikTok Downloader",
+        "subtitle": "Download TikTok Videos, Photos, and MP3 Audio without Watermark",
+        "placeholder": "Paste TikTok link here...",
+        "downloadLink": "Download",
+        "downloading": "Processing...",
+        "invalidUrl": "Please enter a valid TikTok URL.",
+        "errorFetch": "Failed to fetch data. Please try again.",
+        "noWatermark": "No Watermark",
+        "downloadAudio": "Download Audio",
+        "downloadPhoto": "Download Photo",
+        "success": "Success!"
+    },
+    "Footer": {
+        "description": "Fast & Free TikTok Video Downloader."
+    }
+}

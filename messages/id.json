@@ -1,0 +1,18 @@
+{
+    "Downloader": {
+        "title": "TikTok Downloader",
+        "subtitle": "Unduh Video, Foto, dan Musik MP3 TikTok Tanpa Watermark",
+        "placeholder": "Tempel tautan TikTok di sini...",
+        "downloadLink": "Unduh",
+        "downloading": "Memproses...",
+        "invalidUrl": "Silakan masukkan URL TikTok yang valid.",
+        "errorFetch": "Gagal mengambil data. Silakan coba lagi.",
+        "noWatermark": "Tanpa Watermark",
+        "downloadAudio": "Unduh Audio",
+        "downloadPhoto": "Unduh Foto",
+        "success": "Berhasil!"
+    },
+    "Footer": {
+        "description": "Pengunduh Video TikTok Cepat & Gratis."
+    }
+}
