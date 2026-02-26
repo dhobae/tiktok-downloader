@@ -2,11 +2,21 @@ import { NextResponse } from 'next/server';
 
 export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
-    const url = searchParams.get('url');
+    const rawUrl = searchParams.get('url');
     const filename = searchParams.get('filename') || 'download_media';
 
-    if (!url) {
+    if (!rawUrl) {
         return NextResponse.json({ error: 'URL is required' }, { status: 400 });
+    }
+
+    // ✅ Fix: jika URL relatif, tambahkan base URL TikTok
+    const url = rawUrl.startsWith('http') ? rawUrl : `https://www.tiktok.com${rawUrl}`;
+
+    // ✅ Validasi URL
+    try {
+        new URL(url);
+    } catch {
+        return NextResponse.json({ error: 'Invalid URL' }, { status: 400 });
     }
 
     try {
@@ -21,23 +31,13 @@ export async function GET(request: Request) {
             throw new Error(`Failed to fetch media: ${response.statusText}`);
         }
 
-        // Only pass necessary headers to prevent decompression/length mismatches
         const headers = new Headers();
         headers.set('Content-Disposition', `attachment; filename="${filename}"`);
+        headers.set('Content-Type', response.headers.get('content-type') || 'application/octet-stream');
 
-        const contentType = response.headers.get('content-type');
-        if (contentType) {
-            headers.set('Content-Type', contentType);
-        } else {
-            headers.set('Content-Type', 'application/octet-stream');
-        }
-
-        return new NextResponse(response.body, {
-            status: 200,
-            headers,
-        });
+        return new NextResponse(response.body, { status: 200, headers });
     } catch (err: any) {
         console.error('Download proxy error:', err);
-        return NextResponse.json({ error: 'Failed to download media' }, { status: 500 });
+        return NextResponse.json({ error: err.message || 'Failed to download media' }, { status: 500 });
     }
 }
